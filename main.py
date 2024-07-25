@@ -41,41 +41,41 @@ def log_message(prefix: str, msg: types.Message, user: dict, message_age: int):
     print(f'{prefix}\nName: {msg.from_user.username}\nText: {msg.text}\nAge: {message_age}\nChat id: {msg.chat.id}\nIgnoring: {user["ignore"]}\nIs Dev: {msg.from_user.username in dev_list}')
 
 
-def handle_dev_commands(text, chat_id):
+def handle_dev_commands(text: str, chat_id: int):
     """Обработка команд разработчика."""
     match = re.match(r'/dev (\d+) (.+) (.+)', text)
     if match:
-        target_chat_id = int(match.group(1))
+        target = int(match.group(1))
         cmd = match.group(2)
         msg = match.group(3)
 
         if cmd == 'echo':
-            bot.send_message(target_chat_id, msg)
+            bot.send_message(target, msg)
         elif cmd == 'ping':
-            bot.send_message(target_chat_id, 'pong')
+            bot.send_message(target, 'pong')
         elif cmd == 'ignore':
-            if str(target_chat_id) in users:
-                users[str(target_chat_id)]['ignore'] = True
+            if str(target) in users:
+                users[str(target)]['ignore'] = True
                 bot.send_message(chat_id, 'Пользователь будет игнорироваться')
             else:
                 bot.send_message(chat_id, 'Пользователь не найден')
         elif cmd == 'unignore':
-            if str(target_chat_id) in users:
-                users[str(target_chat_id)]['ignore'] = False
+            if str(target) in users:
+                users[str(target)]['ignore'] = False
                 bot.send_message(chat_id, 'Пользователь не будет игнорироваться')
             else:
                 bot.send_message(chat_id, 'Пользователь не найден')
         elif cmd == 'time':
             current_time = get_current_unix_time()
             if current_time:
-                bot.send_message(target_chat_id, f'Current Unix time: {current_time}')
+                bot.send_message(target, f'Current Unix time: {current_time}')
         else:
             bot.send_message(chat_id, 'Неизвестная команда /dev')
     else:
         bot.send_message(chat_id, 'Неверный формат команды. Используйте /dev <chat_id> <cmd> <msg?>')
 
 
-def handle_http_cat(text, chat_id):
+def handle_http_cat(text: str, chat_id: int):
     """Обработка запросов HTTP cat."""
     try:
         response = requests.get(f"{HOST}{text}")
