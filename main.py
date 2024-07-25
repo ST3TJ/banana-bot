@@ -18,6 +18,8 @@ def handle_message(msg: types.Message):
     text = msg.text.lower()
     chat_id = msg.chat.id
 
+    print(f'Name: {msg.from_user.full_name}\nText: {text}\n')
+
     def send_photo(image_url):
         bot.send_photo(chat_id, image_url)
 
