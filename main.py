@@ -1,34 +1,23 @@
-# https://t.me/banan2114bot
-
+import os
+import json
 import requests
 import re
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 from random import choice
 from telebot import TeleBot, types
+from dotenv import load_dotenv
 
-# Настройка бота и хоста
-BOT_TOKEN = '7384564003:AAH2iM8jOuPzyCdJEzXYdB_4b6T8q3Kijak'
-bot = TeleBot(BOT_TOKEN)
+load_dotenv()
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+DEV_LIST = os.getenv('DEV_LIST').split(',')
+USER_DATA_FILE = 'users.json'
 HOST = 'https://http.cat/'
-
-# Установка команд бота
-bot.set_my_commands([
-    types.BotCommand('/start', 'Старт'),
-    types.BotCommand('/random', 'Случайная картинка'),
-    types.BotCommand('/dev', 'Для разработчиков')
-])
-
-# Список HTTP cat изображений
 HTTP_CAT_IMAGES = [
     100, 101, 102, 103, 200, 201, 202, 203, 204, 205, 206, 207, 300, 301, 302, 303, 304, 305, 307, 308, 400, 401, 402, 403, 404,
     405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 420, 421, 422, 423, 424, 425, 426, 428, 429, 431, 444,
     450, 451, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 521, 523, 525, 599
 ]
-
-# Словари для хранения информации о пользователях
-users = {}
-dev_list = ['banan2114', 'clmove', 'sqwatnn']
-help_message = (
+HELP_MESSAGE = (
     'Список команд:\n'
     '/dev <id> echo <msg> - отправить сообщение <msg> в чат <id>\n'
     '/dev <id> ping - отправить "pong" в чат <id>\n'
@@ -37,8 +26,36 @@ help_message = (
     '/dev <id> time - отправить текущее Unix время в чат <id>'
 )
 
-def get_current_unix_time():
-    """Возвращает текущее время в формате Unix."""
+bot = TeleBot(BOT_TOKEN)
+
+# Commands for the bot
+bot.set_my_commands([
+    types.BotCommand('/start', 'Старт'),
+    types.BotCommand('/random', 'Случайная картинка'),
+    types.BotCommand('/dev', 'Для разработчиков')
+])
+
+# Load users from JSON database
+def load_users() -> Dict[str, Any]:
+    if os.path.exists(USER_DATA_FILE):
+        with open(USER_DATA_FILE, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    return {"chats": []}
+
+
+# Save users to JSON database
+def save_users(users: Dict[str, Dict[str, bool]]) -> None:
+    with open(USER_DATA_FILE, 'w', encoding='utf-8') as file:
+        json.dump(users, file, ensure_ascii=False, indent=4)
+
+
+users = load_users()
+
+def is_developer(userid: int) -> bool:
+    return users.get(str(userid), {}).get("is_dev", False)
+
+
+def get_current_unix_time() -> Optional[int]:
     try:
         response = requests.get('http://worldtimeapi.org/api/timezone/Etc/UTC')
         response.raise_for_status()
@@ -48,14 +65,12 @@ def get_current_unix_time():
         return None
 
 
-def log_message(prefix: str, msg: types.Message, user: Dict[str, bool], message_age: int):
-    """Логирование информации о сообщении."""
-    
+def log_message(prefix: str, msg: types.Message, user: Dict[str, bool], message_age: int) -> None:
     username = msg.from_user.username if msg.from_user.username else "Unknown"
     text = msg.text if msg.text else "No text"
     chat_id = msg.chat.id
-    ignoring = user.get("ignore", False)
-    is_dev = username in dev_list
+    is_dev = is_developer(chat_id)
+    ignoring = user.get("ignore", False) and not is_dev
 
     log_output = (
         f'{prefix}\n'
@@ -70,37 +85,43 @@ def log_message(prefix: str, msg: types.Message, user: Dict[str, bool], message_
     print(log_output)
 
 
-def handle_dev_commands(text: str, uid: int):
-    """Обработка команд разработчика."""
-    
+def handle_dev_commands(text: str, uid: int) -> None:
     def is_user_exists(user_id: int) -> bool:
         return str(user_id) in users
 
-    def echo(target: int, msg: str):
+
+    def echo(target: int, msg: str) -> None:
         bot.send_message(target, msg)
 
-    def ping(target: int, msg: Optional[str] = None):
+
+    def ping(target: int, msg: Optional[str] = None) -> None:
         bot.send_message(target, 'pong')
 
-    def ignore(target: int, msg: Optional[str] = None):
+
+    def ignore(target: int, msg: Optional[str] = None) -> None:
         if is_user_exists(target):
             users[str(target)]['ignore'] = True
+            save_users(users)
             bot.send_message(uid, 'Пользователь будет игнорироваться')
         else:
             bot.send_message(uid, 'Пользователь не найден')
 
-    def unignore(target: int, msg: Optional[str] = None):
+
+    def unignore(target: int, msg: Optional[str] = None) -> None:
         if is_user_exists(target):
             users[str(target)]['ignore'] = False
+            save_users(users)
             bot.send_message(uid, 'Пользователь не будет игнорироваться')
         else:
             bot.send_message(uid, 'Пользователь не найден')
 
-    def time(target: int, msg: Optional[str] = None):
+
+    def time(target: int, msg: Optional[str] = None) -> None:
         current_time = get_current_unix_time()
         if current_time:
             bot.send_message(target, f'Current Unix time: {current_time}')
-    
+
+
     commands = {
         'echo': echo,
         'ping': ping,
@@ -110,29 +131,40 @@ def handle_dev_commands(text: str, uid: int):
     }
 
     if text in ['/dev', '/dev help']:
-        bot.send_message(uid, help_message)
+        bot.send_message(uid, HELP_MESSAGE)
         return
-
+    
     match = re.match(r'/dev (\w+) (\w+)(?: (.+))?', text)
     if match:
         target = match.group(1)
-        target = uid if target == 'self' else int(target)
+        if target == 'self':
+            target = uid
+        elif target == 'all':
+            pass
+        else:
+            target = int(target)
         cmd = match.group(2)
         msg = match.group(3)
 
         if cmd in commands:
-            if msg is None:
-                commands[cmd](target)
+            if target == 'all':
+                for chat_id in users.get("chats", []):
+                    if msg is None:
+                        commands[cmd](int(chat_id))
+                    else:
+                        commands[cmd](int(chat_id), msg)
             else:
-                commands[cmd](target, msg)
+                if msg is None:
+                    commands[cmd](target)
+                else:
+                    commands[cmd](target, msg)
         else:
             bot.send_message(uid, 'Неизвестная команда /dev. Используйте /dev help для списка доступных команд.')
     else:
         bot.send_message(uid, 'Неверный формат команды. Используйте /dev <id> <cmd> <msg?>')
 
 
-def handle_http_cat(text: str, uid: int):
-    """Обработка запросов HTTP cat."""
+def handle_http_cat(text: str, uid: int) -> None:
     try:
         response = requests.get(f"{HOST}{text}")
         if response.status_code == 200:
@@ -143,10 +175,9 @@ def handle_http_cat(text: str, uid: int):
         bot.send_message(uid, 'Ошибка сети')
 
 
-def handle_command(text, uid, username):
-    """Обработчик команд."""
+def handle_command(text: str, uid: int, username: str) -> None:
     if text.startswith('/dev'):
-        if username in dev_list:
+        if is_developer(uid):
             handle_dev_commands(text, uid)
         else:
             bot.send_message(uid, 'Вы не являетесь разработчиком')
@@ -159,39 +190,37 @@ def handle_command(text, uid, username):
 
 
 @bot.message_handler(func=lambda message: True)
-def handle_message(msg: types.Message):
-    """Обработчик сообщений."""
+def handle_message(msg: types.Message) -> None:
     uid = str(msg.chat.id)
     text = msg.text
     username = msg.from_user.username
 
-    # Проверка и создание пользователя
-    user = users.setdefault(uid, {'ignore': False})
+    user = users.setdefault(uid, {'ignore': False, 'is_dev': username in DEV_LIST})
+    if uid not in users.get("chats", []):
+        users["chats"].append(uid)
+        save_users(users)
 
-    # Получение возраста сообщения
     current_time = get_current_unix_time()
     if not current_time:
         return
     message_age = current_time - msg.date
 
-    # Логирование сообщений
     if message_age > 10:
         log_message('Old message', msg, user, message_age)
         return
 
-    if text.startswith('/dev') and username in dev_list:
+    if text.startswith('/dev') and is_developer(uid):
         log_message('Dev message', msg, user, message_age)
-    elif user['ignore']:
+    elif user['ignore'] and not is_developer(uid):
         log_message('Ignored message', msg, user, message_age)
         return
     else:
         log_message('New message', msg, user, message_age)
 
-    # Обработка команд и текстовых сообщений
     if text.startswith('/'):
         handle_command(text, uid, username)
     else:
         handle_http_cat(text, uid)
 
-# Запуск бота
+# Start the bot
 bot.polling(non_stop=True, interval=0)
