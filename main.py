@@ -2,7 +2,7 @@
 
 import requests
 import re
-from typing import Dict
+from typing import Dict, Optional
 from random import choice
 from telebot import TeleBot, types
 
@@ -70,9 +70,6 @@ def log_message(prefix: str, msg: types.Message, user: Dict[str, bool], message_
     print(log_output)
 
 
-import re
-from typing import Optional
-
 def handle_dev_commands(text: str, uid: int):
     """Обработка команд разработчика."""
     
@@ -116,9 +113,10 @@ def handle_dev_commands(text: str, uid: int):
         bot.send_message(uid, help_message)
         return
 
-    match = re.match(r'/dev (\d+) (\w+)(?: (.+))?', text)
+    match = re.match(r'/dev (\w+) (\w+)(?: (.+))?', text)
     if match:
-        target = int(match.group(1))
+        target = match.group(1)
+        target = uid if target == 'self' else int(target)
         cmd = match.group(2)
         msg = match.group(3)
 
@@ -181,12 +179,11 @@ def handle_message(msg: types.Message):
         log_message('Old message', msg, user, message_age)
         return
 
-    if user['ignore']:
-        log_message('Ignored message', msg, user, message_age)
-        return
-
     if text.startswith('/dev') and username in dev_list:
         log_message('Dev message', msg, user, message_age)
+    elif user['ignore']:
+        log_message('Ignored message', msg, user, message_age)
+        return
     else:
         log_message('New message', msg, user, message_age)
 
