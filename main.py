@@ -19,11 +19,11 @@ HTTP_CAT_IMAGES = [
 ]
 HELP_MESSAGE = (
     'Список команд:\n'
-    '/dev <id> echo <msg> - отправить сообщение <msg> в чат <id>\n'
-    '/dev <id> ping - отправить "pong" в чат <id>\n'
-    '/dev <id> ignore - игнорировать пользователя <id>\n'
-    '/dev <id> unignore - перестать игнорировать пользователя <id>\n'
-    '/dev <id> time - отправить текущее Unix время в чат <id>'
+    '/dev echo <id> <msg> - отправить сообщение <msg> в чат <id>\n'
+    '/dev ping <id> - отправить "pong" в чат <id>\n'
+    '/dev ignore <id> - игнорировать пользователя <id>\n'
+    '/dev unignore <id> - перестать игнорировать пользователя <id>\n'
+    '/dev time <id> - отправить текущее Unix время в чат <id>'
 )
 
 bot = TeleBot(BOT_TOKEN)
@@ -40,7 +40,7 @@ def load_users() -> Dict[str, Any]:
     if os.path.exists(USER_DATA_FILE):
         with open(USER_DATA_FILE, 'r', encoding='utf-8') as file:
             return json.load(file)
-    return {"chats": []}
+    return {'chats': []}
 
 
 # Save users to JSON database
@@ -52,7 +52,7 @@ def save_users(users: Dict[str, Dict[str, bool]]) -> None:
 users = load_users()
 
 def is_developer(userid: int) -> bool:
-    return users.get(str(userid), {}).get("is_dev", False)
+    return users.get(str(userid), {}).get('is_dev', False)
 
 
 def get_current_unix_time() -> Optional[int]:
@@ -61,16 +61,16 @@ def get_current_unix_time() -> Optional[int]:
         response.raise_for_status()
         return response.json()['unixtime']
     except requests.RequestException as e:
-        print(f"Error fetching time: {e}")
+        print(f'Error fetching time: {e}')
         return None
 
 
 def log_message(prefix: str, msg: types.Message, user: Dict[str, bool], message_age: int) -> None:
-    username = msg.from_user.username if msg.from_user.username else "Unknown"
-    text = msg.text if msg.text else "No text"
+    username = msg.from_user.username if msg.from_user.username else 'Unknown'
+    text = msg.text if msg.text else 'No text'
     chat_id = msg.chat.id
     is_dev = is_developer(chat_id)
-    ignoring = user.get("ignore", False) and not is_dev
+    ignoring = user.get('ignore', False) and not is_dev
 
     log_output = (
         f'{prefix}\n'
@@ -85,41 +85,41 @@ def log_message(prefix: str, msg: types.Message, user: Dict[str, bool], message_
     print(log_output)
 
 
-def handle_dev_commands(text: str, uid: int) -> None:
-    def is_user_exists(user_id: int) -> bool:
-        return str(user_id) in users
+def handle_dev_commands(text: str, who: int) -> None:
+    def is_user_exists(uid: int) -> bool:
+        return str(uid) in users
 
 
-    def echo(target: int, msg: str) -> None:
-        bot.send_message(target, msg)
+    def echo(uid: int, text: str) -> None:
+        bot.send_message(uid, text)
 
 
-    def ping(target: int, msg: Optional[str] = None) -> None:
-        bot.send_message(target, 'pong')
+    def ping(uid: int, text: Optional[str] = None) -> None:
+        bot.send_message(uid, 'pong')
 
 
-    def ignore(target: int, msg: Optional[str] = None) -> None:
-        if is_user_exists(target):
-            users[str(target)]['ignore'] = True
+    def ignore(uid: int, text: Optional[str] = None) -> None:
+        if is_user_exists(uid):
+            users[str(uid)]['ignore'] = True
             save_users(users)
             bot.send_message(uid, 'Пользователь будет игнорироваться')
         else:
             bot.send_message(uid, 'Пользователь не найден')
 
 
-    def unignore(target: int, msg: Optional[str] = None) -> None:
-        if is_user_exists(target):
-            users[str(target)]['ignore'] = False
+    def unignore(uid: int, text: Optional[str] = None) -> None:
+        if is_user_exists(uid):
+            users[str(uid)]['ignore'] = False
             save_users(users)
             bot.send_message(uid, 'Пользователь не будет игнорироваться')
         else:
             bot.send_message(uid, 'Пользователь не найден')
 
 
-    def time(target: int, msg: Optional[str] = None) -> None:
+    def time(uid: int, text: Optional[str] = None) -> None:
         current_time = get_current_unix_time()
         if current_time:
-            bot.send_message(target, f'Current Unix time: {current_time}')
+            bot.send_message(uid, f'Current Unix time: {current_time}')
 
 
     commands = {
@@ -131,42 +131,47 @@ def handle_dev_commands(text: str, uid: int) -> None:
     }
 
     if text in ['/dev', '/dev help']:
-        bot.send_message(uid, HELP_MESSAGE)
+        bot.send_message(who, HELP_MESSAGE)
         return
     
     match = re.match(r'/dev (\w+) (\w+)(?: (.+))?', text)
     if match:
-        target = match.group(1)
+        cmd = match.group(1)
+        target = match.group(2)
+        msg = match.group(3)
+
         if target == 'self':
-            target = uid
+            target = who
         elif target == 'all':
             pass
         else:
-            target = int(target)
-        cmd = match.group(2)
-        msg = match.group(3)
+            try:
+                target = int(target)
+            except:
+                bot.send_message(who, 'Неверный формат команды. Используйте /dev <cmd> <id> <msg?>')
+        
 
         if cmd in commands:
             if target == 'all':
-                for chat_id in users.get("chats", []):
+                for uid in users.get('chats', []):
                     if msg is None:
-                        commands[cmd](int(chat_id))
+                        commands[cmd](int(uid))
                     else:
-                        commands[cmd](int(chat_id), msg)
+                        commands[cmd](int(uid), msg)
             else:
                 if msg is None:
                     commands[cmd](target)
                 else:
                     commands[cmd](target, msg)
         else:
-            bot.send_message(uid, 'Неизвестная команда /dev. Используйте /dev help для списка доступных команд.')
+            bot.send_message(who, 'Неизвестная команда /dev. Используйте /dev help для списка доступных команд.')
     else:
-        bot.send_message(uid, 'Неверный формат команды. Используйте /dev <id> <cmd> <msg?>')
+        bot.send_message(who, 'Неверный формат команды. Используйте /dev <cmd> <id> <msg?>')
 
 
 def handle_http_cat(text: str, uid: int) -> None:
     try:
-        response = requests.get(f"{HOST}{text}")
+        response = requests.get(f'{HOST}{text}')
         if response.status_code == 200:
             bot.send_photo(uid, response.url)
         else:
@@ -196,8 +201,8 @@ def handle_message(msg: types.Message) -> None:
     username = msg.from_user.username
 
     user = users.setdefault(uid, {'ignore': False, 'is_dev': username in DEV_LIST})
-    if uid not in users.get("chats", []):
-        users["chats"].append(uid)
+    if uid not in users.get('chats', []):
+        users['chats'].append(uid)
         save_users(users)
 
     current_time = get_current_unix_time()
