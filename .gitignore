@@ -1,4 +1,6 @@
 .env
-users.json
-venv
 .idea
+venv
+
+users.json
+bot.log

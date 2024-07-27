@@ -1,11 +1,44 @@
 import os
 import json
-import requests
 import re
+import sys
+import logging
 from typing import Dict, Optional, Any
 from random import choice
-from telebot import TeleBot, types
+
+import colorlog
+import requests
 from dotenv import load_dotenv
+from telebot import TeleBot, types
+
+
+# Initialize logging
+def setup_logging() -> logging.Logger:
+    log_formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s')
+    color_formatter = colorlog.ColoredFormatter(
+        "[%(asctime)s] %(log_color)s%(levelname)s%(reset)s: %(message)s",
+        datefmt='%Y-%m-%d | %H:%M:%S',
+        log_colors={
+            'DEBUG': 'cyan',
+            'INFO': 'green',
+            'WARNING': 'yellow',
+            'ERROR': 'red',
+            'CRITICAL': 'bold_red',
+        }
+    )
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(color_formatter)
+    file_handler = logging.FileHandler('bot.log')
+    file_handler.setFormatter(log_formatter)
+    
+    logger = logging.getLogger('telebot')
+    logger.setLevel(logging.INFO)
+    logger.addHandler(console_handler)
+    logger.addHandler(file_handler)
+    return logger
+
+
+telebot_logger = setup_logging()
 
 load_dotenv()
 BOT_TOKEN = os.getenv('BOT_TOKEN')
@@ -24,7 +57,8 @@ HELP_MESSAGE = (
     '/dev ping <id> - отправить "pong" в чат <id>\n'
     '/dev ignore <id> - игнорировать пользователя <id>\n'
     '/dev unignore <id> - перестать игнорировать пользователя <id>\n'
-    '/dev time <id> - отправить текущее Unix время в чат <id>'
+    '/dev time <id> - отправить текущее Unix время в чат <id>',
+    '/dev shutdown - выключить бота удалённо'
 )
 
 bot = TeleBot(BOT_TOKEN)
@@ -64,28 +98,28 @@ def get_current_unix_time() -> Optional[int]:
         response.raise_for_status()
         return response.json()['unixtime']
     except requests.RequestException as e:
-        print(f'Error fetching time: {e}')
+        telebot_logger.error(f'Error fetching time: {e}')
         return None
 
 
 def log_message(prefix: str, msg: types.Message, user_data: Dict[str, bool], message_age: int) -> None:
-    username = msg.from_user.username if msg.from_user.username else 'Unknown'
-    text = msg.text if msg.text else 'No text'
+    username = msg.from_user.username or 'Unknown'
+    text = msg.text or 'No text'
     chat_id = msg.chat.id
     is_dev = is_developer(chat_id)
     ignoring = user_data.get('ignore', False) and not is_dev
 
     log_output = (
-        f'{prefix}\n'
-        f'Name: {username}\n'
-        f'Text: {text}\n'
-        f'Age: {message_age}\n'
-        f'Chat id: {chat_id}\n'
-        f'Ignoring: {ignoring}\n'
-        f'Is Dev: {is_dev}\n'
+        f"{prefix}\n"
+        f"Username: {username}\n"
+        f"Message Text: {text}\n"
+        f"Message Age: {message_age} seconds\n"
+        f"Chat ID: {chat_id}\n"
+        f"Ignoring User: {ignoring}\n"
+        f"Is Developer: {is_dev}"
     )
 
-    print(log_output)
+    telebot_logger.info(log_output)
 
 
 def handle_dev_commands(command_text: str, user_id: int) -> None:
@@ -118,26 +152,32 @@ def handle_dev_commands(command_text: str, user_id: int) -> None:
         current_time = get_current_unix_time()
         if current_time:
             bot.send_message(userid, f'Current Unix time: {current_time}')
+            
+    def shutdown(userid: int) -> None:
+        bot.send_message(userid, f'Bot shutdown...')
+        telebot_logger.info('Bot is shutting down...')
+        return os._exit(0)
 
     commands = {
         'echo': echo,
         'ping': ping,
         'ignore': ignore,
         'unignore': unignore,
-        'time': time
+        'time': time,
+        'shutdown': shutdown
     }
 
     if command_text in ['/dev', '/dev help']:
         bot.send_message(user_id, HELP_MESSAGE)
         return
 
-    match = re.match(r'/dev (\w+) (\w+)(?: (.+))?', command_text)
+    match = re.match(r'/dev (\w+)(?: (\w+))?(?: (.+))?', command_text)
     if match:
         cmd = match.group(1)
         target = match.group(2)
         message = match.group(3)
 
-        if target == 'self':
+        if target == 'self' or cmd == 'shutdown':
             target = user_id
         elif target == 'all':
             pass
@@ -226,4 +266,5 @@ def handle_message(msg: types.Message) -> None:
 
 
 # Start the bot
+telebot_logger.info("Starting bot polling...")
 bot.polling(non_stop=True, interval=0)
