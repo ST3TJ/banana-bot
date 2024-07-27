@@ -13,9 +13,10 @@ DEV_LIST = os.getenv('DEV_LIST').split(',')
 USER_DATA_FILE = 'users.json'
 HOST = 'https://http.cat/'
 HTTP_CAT_IMAGES = [
-    100, 101, 102, 103, 200, 201, 202, 203, 204, 205, 206, 207, 300, 301, 302, 303, 304, 305, 307, 308, 400, 401, 402, 403, 404,
-    405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 420, 421, 422, 423, 424, 425, 426, 428, 429, 431, 444,
-    450, 451, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 521, 523, 525, 599
+    100, 101, 102, 103, 200, 201, 202, 203, 204, 205, 206, 207, 300, 301, 302, 303, 304, 305, 307, 308, 400, 401, 402,
+    403, 404, 405, 406, 407, 408, 409, 410, 411, 412, 413, 414, 415, 416, 417, 418, 420, 421, 422, 423, 424, 425, 426,
+    428, 429, 431, 444, 450, 451, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 521, 523,
+    525, 599
 ]
 HELP_MESSAGE = (
     'Список команд:\n'
@@ -35,6 +36,7 @@ bot.set_my_commands([
     types.BotCommand('/dev', 'Для разработчиков')
 ])
 
+
 # Load users from JSON database
 def load_users() -> Dict[str, Any]:
     if os.path.exists(USER_DATA_FILE):
@@ -44,20 +46,21 @@ def load_users() -> Dict[str, Any]:
 
 
 # Save users to JSON database
-def save_users(users: Dict[str, Dict[str, bool]]) -> None:
+def save_users(users_data: Dict[str, Dict[str, bool]]) -> None:
     with open(USER_DATA_FILE, 'w', encoding='utf-8') as file:
-        json.dump(users, file, ensure_ascii=False, indent=4)
+        json.dump(users_data, file, ensure_ascii=False, indent=4)
 
 
 users = load_users()
 
-def is_developer(userid: int) -> bool:
-    return users.get(str(userid), {}).get('is_dev', False)
+
+def is_developer(user_id: int | str) -> bool:
+    return users.get(str(user_id), {}).get('is_dev', False)
 
 
 def get_current_unix_time() -> Optional[int]:
     try:
-        response = requests.get('http://worldtimeapi.org/api/timezone/Etc/UTC')
+        response = requests.get('https://worldtimeapi.org/api/timezone/Etc/UTC')
         response.raise_for_status()
         return response.json()['unixtime']
     except requests.RequestException as e:
@@ -65,12 +68,12 @@ def get_current_unix_time() -> Optional[int]:
         return None
 
 
-def log_message(prefix: str, msg: types.Message, user: Dict[str, bool], message_age: int) -> None:
+def log_message(prefix: str, msg: types.Message, user_data: Dict[str, bool], message_age: int) -> None:
     username = msg.from_user.username if msg.from_user.username else 'Unknown'
     text = msg.text if msg.text else 'No text'
     chat_id = msg.chat.id
     is_dev = is_developer(chat_id)
-    ignoring = user.get('ignore', False) and not is_dev
+    ignoring = user_data.get('ignore', False) and not is_dev
 
     log_output = (
         f'{prefix}\n'
@@ -85,42 +88,36 @@ def log_message(prefix: str, msg: types.Message, user: Dict[str, bool], message_
     print(log_output)
 
 
-def handle_dev_commands(text: str, who: int) -> None:
-    def is_user_exists(uid: int) -> bool:
-        return str(uid) in users
+def handle_dev_commands(command_text: str, user_id: int) -> None:
+    def is_user_exists(userid: int) -> bool:
+        return str(userid) in users
 
+    def echo(userid: int, text: str) -> None:
+        bot.send_message(userid, text)
 
-    def echo(uid: int, text: str) -> None:
-        bot.send_message(uid, text)
+    def ping(userid: int) -> None:
+        bot.send_message(userid, 'pong')
 
-
-    def ping(uid: int, text: Optional[str] = None) -> None:
-        bot.send_message(uid, 'pong')
-
-
-    def ignore(uid: int, text: Optional[str] = None) -> None:
-        if is_user_exists(uid):
-            users[str(uid)]['ignore'] = True
+    def ignore(userid: int) -> None:
+        if is_user_exists(userid):
+            users[str(userid)]['ignore'] = True
             save_users(users)
-            bot.send_message(uid, 'Пользователь будет игнорироваться')
+            bot.send_message(userid, 'Пользователь будет игнорироваться')
         else:
-            bot.send_message(uid, 'Пользователь не найден')
+            bot.send_message(userid, 'Пользователь не найден')
 
-
-    def unignore(uid: int, text: Optional[str] = None) -> None:
-        if is_user_exists(uid):
-            users[str(uid)]['ignore'] = False
+    def unignore(userid: int) -> None:
+        if is_user_exists(userid):
+            users[str(userid)]['ignore'] = False
             save_users(users)
-            bot.send_message(uid, 'Пользователь не будет игнорироваться')
+            bot.send_message(userid, 'Пользователь не будет игнорироваться')
         else:
-            bot.send_message(uid, 'Пользователь не найден')
+            bot.send_message(userid, 'Пользователь не найден')
 
-
-    def time(uid: int, text: Optional[str] = None) -> None:
+    def time(userid: int) -> None:
         current_time = get_current_unix_time()
         if current_time:
-            bot.send_message(uid, f'Current Unix time: {current_time}')
-
+            bot.send_message(userid, f'Current Unix time: {current_time}')
 
     commands = {
         'echo': echo,
@@ -130,68 +127,68 @@ def handle_dev_commands(text: str, who: int) -> None:
         'time': time
     }
 
-    if text in ['/dev', '/dev help']:
-        bot.send_message(who, HELP_MESSAGE)
+    if command_text in ['/dev', '/dev help']:
+        bot.send_message(user_id, HELP_MESSAGE)
         return
-    
-    match = re.match(r'/dev (\w+) (\w+)(?: (.+))?', text)
+
+    match = re.match(r'/dev (\w+) (\w+)(?: (.+))?', command_text)
     if match:
         cmd = match.group(1)
         target = match.group(2)
-        msg = match.group(3)
+        message = match.group(3)
 
         if target == 'self':
-            target = who
+            target = user_id
         elif target == 'all':
             pass
         else:
             try:
                 target = int(target)
-            except:
-                bot.send_message(who, 'Неверный формат команды. Используйте /dev <cmd> <id> <msg?>')
-        
+            except ValueError:
+                bot.send_message(user_id, 'Неверный формат команды. Используйте /dev <cmd> <id> <msg?>')
+                return
 
         if cmd in commands:
             if target == 'all':
                 for uid in users.get('chats', []):
-                    if msg is None:
+                    if message is None:
                         commands[cmd](int(uid))
                     else:
-                        commands[cmd](int(uid), msg)
+                        commands[cmd](int(uid), message)
             else:
-                if msg is None:
+                if message is None:
                     commands[cmd](target)
                 else:
-                    commands[cmd](target, msg)
+                    commands[cmd](target, message)
         else:
-            bot.send_message(who, 'Неизвестная команда /dev. Используйте /dev help для списка доступных команд.')
+            bot.send_message(user_id, 'Неизвестная команда /dev. Используйте /dev help для списка доступных команд.')
     else:
-        bot.send_message(who, 'Неверный формат команды. Используйте /dev <cmd> <id> <msg?>')
+        bot.send_message(user_id, 'Неверный формат команды. Используйте /dev <cmd> <id> <msg?>')
 
 
-def handle_http_cat(text: str, uid: int) -> None:
+def handle_http_cat(command_text: str, user_id: int | str) -> None:
     try:
-        response = requests.get(f'{HOST}{text}')
+        response = requests.get(f'{HOST}{command_text}')
         if response.status_code == 200:
-            bot.send_photo(uid, response.url)
+            bot.send_photo(user_id, response.url)
         else:
-            bot.send_message(uid, 'Такой ошибки не существует')
+            bot.send_message(user_id, 'Такой ошибки не существует')
     except requests.RequestException:
-        bot.send_message(uid, 'Ошибка сети')
+        bot.send_message(user_id, 'Ошибка сети')
 
 
-def handle_command(text: str, uid: int, username: str) -> None:
-    if text.startswith('/dev'):
-        if is_developer(uid):
-            handle_dev_commands(text, uid)
+def handle_command(command_text: str, user_id: int | str) -> None:
+    if command_text.startswith('/dev'):
+        if is_developer(user_id):
+            handle_dev_commands(command_text, user_id)
         else:
-            bot.send_message(uid, 'Вы не являетесь разработчиком')
-    elif text == '/random':
-        bot.send_photo(uid, f'{HOST}{choice(HTTP_CAT_IMAGES)}')
-    elif text == '/start':
-        bot.send_message(uid, 'Введите код состояния ответа HTTP, чтобы узнать что он значит')
+            bot.send_message(user_id, 'Вы не являетесь разработчиком')
+    elif command_text == '/random':
+        bot.send_photo(user_id, f'{HOST}{choice(HTTP_CAT_IMAGES)}')
+    elif command_text == '/start':
+        bot.send_message(user_id, 'Введите код состояния ответа HTTP, чтобы узнать что он значит')
     else:
-        bot.send_message(uid, 'Такой команды нет')
+        bot.send_message(user_id, 'Такой команды нет')
 
 
 @bot.message_handler(func=lambda message: True)
@@ -200,7 +197,7 @@ def handle_message(msg: types.Message) -> None:
     text = msg.text
     username = msg.from_user.username
 
-    user = users.setdefault(uid, {'ignore': False, 'is_dev': username in DEV_LIST})
+    user_data = users.setdefault(uid, {'ignore': False, 'is_dev': username in DEV_LIST})
     if uid not in users.get('chats', []):
         users['chats'].append(uid)
         save_users(users)
@@ -211,21 +208,22 @@ def handle_message(msg: types.Message) -> None:
     message_age = current_time - msg.date
 
     if message_age > 10:
-        log_message('Old message', msg, user, message_age)
+        log_message('Old message', msg, user_data, message_age)
         return
 
     if text.startswith('/dev') and is_developer(uid):
-        log_message('Dev message', msg, user, message_age)
-    elif user['ignore'] and not is_developer(uid):
-        log_message('Ignored message', msg, user, message_age)
+        log_message('Dev message', msg, user_data, message_age)
+    elif user_data['ignore'] and not is_developer(uid):
+        log_message('Ignored message', msg, user_data, message_age)
         return
     else:
-        log_message('New message', msg, user, message_age)
+        log_message('New message', msg, user_data, message_age)
 
     if text.startswith('/'):
-        handle_command(text, uid, username)
+        handle_command(text, uid)
     else:
         handle_http_cat(text, uid)
+
 
 # Start the bot
 bot.polling(non_stop=True, interval=0)
